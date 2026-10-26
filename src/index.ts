@@ -144,6 +144,9 @@ export function createWorld(config: {
       // run_created / resilient run_started persist dynamicWorkflowCode and
       // runs.get echoes it back for every replay.
       dynamicWorkflowCode: true,
+      // invoke() hook-resume fast path: delivery captures the flow handler's
+      // response as the invocation outcome (see queue.ts deliver).
+      invoke: true,
     },
     runs: { ...runs, ...extrasWorld._runsAdditions },
     steps,
@@ -173,6 +176,7 @@ export function createWorld(config: {
     ...streamer,
     ...queue,
     ...extrasWorld._queueAdditions,
+    invoke: extrasWorld._invoke,
     analytics: extrasWorld._analytics,
     getEnvironment: extrasWorld._getEnvironment,
     experimental_snapshots: extrasWorld._snapshots,

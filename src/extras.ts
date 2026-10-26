@@ -331,6 +331,51 @@ export function createExtras(pool: Pool, opts: {
   }
 
 
+
+  // ---------------------------------------------------------------- invoke
+  // Hook-resume invocations: world.invoke(runId, {type:'hook_resume',...}) ->
+  // mailbox row + wake whose payload carries {runId, invoke:true, requestId,
+  // input}; the runtime's withRunInputs handler processes it (handleInvocation
+  // -> events.create hook_received) and the flow route's response is captured
+  // by deliver() as the outcome. conforms to capabilities.invoke contract:
+  // caller polls the mailbox row until responded_at is set (LISTEN wakes it).
+  async function invokeImpl(runId: string, payload: unknown, options?: { idempotencyKey?: string; timeoutMs?: number }): Promise<unknown> {
+    const requestId = options?.idempotencyKey ?? crypto.randomUUID();
+    const timeoutMs = Math.min(options?.timeoutMs ?? 30_000, 120_000);
+    await pool.query(
+      `INSERT INTO entrylite.workflow_invocations (run_id, request_id, payload)
+       VALUES ($1,$2,$3) ON CONFLICT (run_id, request_id) DO NOTHING`,
+      [runId, requestId, JSON.stringify(payload)],
+    );
+    // wake: deliver an invoke-marked message to the run's flow queue
+    const r = await pool.query(`SELECT workflow_name FROM entrylite.workflow_runs WHERE run_id=$1`, [runId]);
+    const wfName = r.rows[0]?.workflow_name;
+    if (!wfName) {
+      const { WorkflowRunNotFoundError } = await import('@workflow/errors');
+      throw new WorkflowRunNotFoundError(runId);
+    }
+    await queue.queue(nsQueueName(`__wkf_workflow_${wfName}`), {
+      runId,
+      invoke: true,
+      requestId,
+      input: payload,
+      requestedAt: new Date().toISOString(),
+      traceCarrier: {},
+    });
+    const deadline = Date.now() + timeoutMs;
+    for (;;) {
+      const row = (await pool.query(
+        `SELECT result, responded_at FROM entrylite.workflow_invocations WHERE run_id=$1 AND request_id=$2`,
+        [runId, requestId])).rows[0];
+      if (row?.responded_at && row.result) return row.result;
+      const remaining = deadline - Date.now();
+      if (remaining <= 0) {
+        throw Object.assign(new Error('Timed out awaiting invocation result; outcome is unknown'), { statusCode: 408 });
+      }
+      await new Promise(res => setTimeout(res, Math.min(100, remaining)));
+    }
+  }
+
   // ------------------------------------------------------------- snapshots
   // Lossless metadata roundtrip: metadata is stored as a jsonb column next to
   // the bytes in the same row (single atomic INSERT ... ON CONFLICT update).
@@ -377,6 +422,7 @@ export function createExtras(pool: Pool, opts: {
 
   return {
     _runsAdditions: { waitForTerminalStatus, getMany, cancelMany, experimentalSetAttributes },
+    _invoke: invokeImpl,
     _snapshots: snapshots,
     _uploadDynamicWorkflowCode: uploadDynamicWorkflowCode,
     _getEncryptionKeyForRun: getEncryptionKeyForRun,

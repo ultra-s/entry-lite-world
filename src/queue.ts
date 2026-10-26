@@ -57,6 +57,29 @@ export function createQueue(pool: Pool) {
     const text = await response.text();
     if (process.env.ENTRYLITE_DEBUG) console.log('[entrylite-world] deliver', job.queue_name, job.attempts, response.status, text.slice(0, 200));
     if (response.ok) {
+      // Invocation outcome capture: invoke-marked wakes (capabilities.invoke)
+      // record the flow handler's response as the mailbox result so the
+      // awaiting world.invoke() caller resolves.
+      const invocationRequest = job.payload?.invoke === true && job.payload?.requestId
+        ? { runId: job.payload.runId as string, requestId: job.payload.requestId as string }
+        : null;
+      if (invocationRequest) {
+        // The flow route's HTTP body is app-level (e.g. {"done":true}); the
+        // invocation outcome is derived from the durable effect: a
+        // hook_received event with resume_id = requestId means accepted.
+        const evt = await pool.query(
+          `SELECT 1 FROM entrylite.workflow_events
+           WHERE run_id=$1 AND resume_id=$2 AND event_type='hook_received' LIMIT 1`,
+          [invocationRequest.runId, invocationRequest.requestId]).catch(() => ({ rows: [] }));
+        const outcome: unknown = evt.rows.length > 0
+          ? { status: 'accepted' }
+          : { status: 'rejected', code: 'HOOK_NOT_FOUND' };
+        await pool.query(
+          `UPDATE entrylite.workflow_invocations SET result=$3, responded_at=now()
+           WHERE run_id=$1 AND request_id=$2 AND responded_at IS NULL`,
+          [invocationRequest.runId, invocationRequest.requestId, JSON.stringify(outcome)],
+        ).catch(() => {});
+      }
       try {
         const parsed = JSON.parse(text);
         if (typeof parsed?.timeoutSeconds === 'number' && parsed.timeoutSeconds >= 0) {
