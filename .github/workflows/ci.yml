@@ -34,8 +34,10 @@ jobs:
           version: 9
       - name: Install dependencies
         run: pnpm install --no-frozen-lockfile
-      - run: npm run build
-      # The world bootstraps its schema; tests create what they need.
+      - name: Build
+        run: npm run build
+      - name: Bootstrap schema
+        run: node dist/bootstrap.js "$ENTRYLITE_WORLD_URL"
       - run: node --test test/contract-conformance.test.mjs
       - run: node --test test/e2e-world.test.mjs
       - run: node test/namespace-isolation.test.mjs
