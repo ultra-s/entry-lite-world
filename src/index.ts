@@ -185,6 +185,10 @@ export function createWorld(config: {
       }
     },
     async close(): Promise<void> {
+      // Stop background loops BEFORE tearing down the pool, otherwise the
+      // lost-wake sweeper fires against a closed pool ("Cannot use a pool
+      // after calling end on the pool").
+      clearInterval(sweeperTimer);
       await queue.close();
       await streamer.close();
       await pool.end();
