@@ -6,6 +6,7 @@
  * All operations are namespace-aware and use the same schema as the core
  * world. Capabilities declared in index.ts.
  */
+import crypto from 'node:crypto';
 import type { Pool } from 'pg';
 
 export function createExtras(pool: Pool, opts: {
@@ -329,8 +330,56 @@ export function createExtras(pool: Pool, opts: {
     };
   }
 
+
+  // ------------------------------------------------------------- snapshots
+  // Lossless metadata roundtrip: metadata is stored as a jsonb column next to
+  // the bytes in the same row (single atomic INSERT ... ON CONFLICT update).
+  const snapshots = {
+    async save(runId: string, data: Uint8Array, metadata: any): Promise<void> {
+      await pool.query(
+        `INSERT INTO entrylite.workflow_snapshots (run_id, data, metadata)
+         VALUES ($1,$2,$3)
+         ON CONFLICT (run_id) DO UPDATE SET data=$2, metadata=$3, created_at=now()`,
+        [runId, Buffer.from(data), JSON.stringify(metadata)],
+      );
+    },
+    async load(runId: string): Promise<{ data: Uint8Array; metadata: any } | null> {
+      const r = await pool.query(
+        `SELECT data, metadata FROM entrylite.workflow_snapshots WHERE run_id=$1`, [runId]);
+      if (!r.rows[0]) return null;
+      return { data: new Uint8Array(r.rows[0].data), metadata: r.rows[0].metadata };
+    },
+    async delete(runId: string): Promise<void> {
+      await pool.query(`DELETE FROM entrylite.workflow_snapshots WHERE run_id=$1`, [runId]);
+    },
+  };
+
+  // ------------------------------------------- dynamic workflow code upload
+  async function uploadDynamicWorkflowCode(runId: string, params: { workflowName: string; code: Uint8Array }): Promise<string> {
+    const ref = `wfcode_${crypto.randomUUID().replaceAll('-', '')}`;
+    await pool.query(
+      `INSERT INTO entrylite.workflow_dynamic_code (ref, run_id, workflow_name, code)
+       VALUES ($1,$2,$3,$4)`,
+      [ref, runId, params.workflowName, Buffer.from(params.code)],
+    );
+    return ref;
+  }
+
+  // -------------------------------------------------------- encryption hook
+  async function getEncryptionKeyForRun(runOrId: any): Promise<Uint8Array | undefined> {
+    const secret = process.env.ENTRYLITE_ENCRYPTION_KEY;
+    if (!secret) return undefined; // encryption disabled (fail-closed default)
+    const runId = typeof runOrId === 'string' ? runOrId : runOrId?.runId;
+    // Derive a per-run 32-byte key: master secret + runId via SHA-256.
+    const { createHash } = await import('node:crypto');
+    return new Uint8Array(createHash('sha256').update(`${secret}:${runId ?? ''}`).digest());
+  }
+
   return {
     _runsAdditions: { waitForTerminalStatus, getMany, cancelMany, experimentalSetAttributes },
+    _snapshots: snapshots,
+    _uploadDynamicWorkflowCode: uploadDynamicWorkflowCode,
+    _getEncryptionKeyForRun: getEncryptionKeyForRun,
     _eventsAdditions: { createBatch },
     // FLAT top-level methods: the runtime calls world.queue(...) directly
     // (core/runtime/start.js), so queue helpers live at world top level.

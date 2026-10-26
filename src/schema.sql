@@ -46,6 +46,21 @@ CREATE UNIQUE INDEX IF NOT EXISTS idx_el_events_hook_resume
   WHERE event_type = 'hook_received' AND resume_id IS NOT NULL;
 
 -- per-run event position counter (slot allocation: MAX+1 inside the insert tx)
+CREATE TABLE IF NOT EXISTS entrylite.workflow_snapshots (
+  run_id        varchar PRIMARY KEY,
+  data          bytea NOT NULL,
+  metadata      jsonb NOT NULL,
+  created_at    timestamptz NOT NULL DEFAULT now()
+);
+
+CREATE TABLE IF NOT EXISTS entrylite.workflow_dynamic_code (
+  ref           varchar PRIMARY KEY,
+  run_id        varchar NOT NULL,
+  workflow_name varchar NOT NULL,
+  code          bytea NOT NULL,
+  created_at    timestamptz NOT NULL DEFAULT now()
+);
+
 CREATE TABLE IF NOT EXISTS entrylite.workflow_event_slots (
   run_id varchar PRIMARY KEY
 );

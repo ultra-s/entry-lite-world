@@ -175,6 +175,9 @@ export function createWorld(config: {
     ...extrasWorld._queueAdditions,
     analytics: extrasWorld._analytics,
     getEnvironment: extrasWorld._getEnvironment,
+    experimental_snapshots: extrasWorld._snapshots,
+    uploadDynamicWorkflowCode: extrasWorld._uploadDynamicWorkflowCode,
+    getEncryptionKeyForRun: extrasWorld._getEncryptionKeyForRun,
     ...(config.streamFlushIntervalMs !== undefined ? { streamFlushIntervalMs: config.streamFlushIntervalMs } : {}),
     // Non-critical observability hook: correlate step execution (no-op sink).
     telemetry: {
