@@ -77,11 +77,9 @@ CI runs the core suites against Postgres 18 on every push (`.github/workflows/ci
 
 ## Status / honesty
 
-Production-grade for the covered surface, with known limits:
+**Full World-interface parity** with `@workflow/world` 5.0.5 (spec v8): 30/30 surface points present — runs/steps/hooks/events (incl. `createBatch`), streams, queue (+ `queueBatch`, `registerRoute`, `registerHandler`), `waitForTerminalStatus`/`getMany`/`cancelMany`/`experimentalSetAttributes`, full `analytics` surface, `experimental_snapshots`, `uploadDynamicWorkflowCode`, `getEncryptionKeyForRun`, `invoke` (hook-resume fast path), `getEnvironment`, deployment/telemetry hooks.
 
-- ✅ Verified: durability (SIGKILL resume), depth (150 steps), throughput (5k runs), multi-process scale, namespace isolation, crash recovery, hook resume
-- ⚠️ Not implemented: observability dashboard, OTel export, run search/list APIs (tracked in the parity audit)
-- ⚠️ Benchmarks are synthetic, not real-traffic proof
+Verified: durability (SIGKILL resume), depth (150 steps), throughput (5k runs, no namespace regression), multi-process scale, namespace isolation, crash recovery, hook resume (dedup + force-claim), invoke end-to-end. Remaining caveats: benchmarks are synthetic, not real-traffic proof; OTel export is app-side (the SDK emits spans when the app registers an OTel SDK — no world endpoint required).
 
 ## License
 

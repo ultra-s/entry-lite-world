@@ -25,3 +25,12 @@ All numbers below were observed in actual test runs on the dev host
   failing first attempt per job (retry path): 640/640 drained, LEAKS: []
 - Soak: 2,000 jobs, 5 workers, 2 mid-run restarts: 37,518 claim/retry attempts,
   foreignLocked = 0
+
+## Full-parity completion (2026-10-27, commits a9c7de4..febb3d2)
+- 30/30 World-interface surface points present (see README)
+- createBatch: per-event atomic, born-running pair, per-event outcomes
+- runs bulk ops: waitForTerminalStatus / getMany / cancelMany / experimentalSetAttributes
+- analytics: full runs/attributes/steps/events/hooks/waits surface
+- invoke: hook-resume fast path, verified end-to-end ({status: accepted}), 500-run bench 3,879/min
+- snapshots / dynamic code upload / per-run encryption keys: roundtrip-verified
+- CI green through febb3d2
