@@ -52,7 +52,7 @@ CREATE TABLE IF NOT EXISTS entrylite.workflow_event_slots (
 
 CREATE TABLE IF NOT EXISTS entrylite.workflow_steps (
   run_id       varchar NOT NULL,
-  step_id      varchar PRIMARY KEY,
+  step_id      varchar NOT NULL,
   step_name    varchar NOT NULL,
   status       varchar NOT NULL,
   input        jsonb,
@@ -65,7 +65,8 @@ CREATE TABLE IF NOT EXISTS entrylite.workflow_steps (
   updated_at   timestamptz NOT NULL DEFAULT now(),
   retry_after  timestamptz,
   spec_version integer
-);
+,
+  PRIMARY KEY (run_id, step_id));
 CREATE INDEX IF NOT EXISTS idx_el_steps_run    ON entrylite.workflow_steps (run_id);
 CREATE INDEX IF NOT EXISTS idx_el_steps_status ON entrylite.workflow_steps (status);
 

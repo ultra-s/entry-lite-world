@@ -6,7 +6,8 @@ const SPEC_VERSION_ENTRYLITE = Number(process.env.ENTRYLITE_SPEC_VERSION ?? 8); 
 import { createEvent } from './events.js';
 import { createRunsStorage, createStepsStorage, createHooksStorage, createEventsReadStorage } from './storage.js';
 import { createQueue, createStreamer } from './queue.js';
-import { newRunId, NAMESPACE, nsQueueName, NS_CLAIM_WHERE } from './util.js';
+import { createExtras } from './extras.js';
+import { newRunId, NAMESPACE, nsQueueName, nsJobKey, NS_CLAIM_WHERE } from './util.js';
 
 export function createWorld(config: {
   connectionString?: string;
@@ -42,6 +43,18 @@ export function createWorld(config: {
   const steps = createStepsStorage(pool);
   const hooks = createHooksStorage(pool);
   const eventsRead = createEventsReadStorage(pool);
+  // Full-parity extras (batch, bulk ops, analytics, routes, env).
+  const extrasWorld = createExtras(pool, {
+    nsQueueName,
+    nsJobKey: (key: string) => nsJobKey(key) ?? key,
+    getNamespace: () => NAMESPACE,
+    queue,
+    eventsRead,
+    runsStorage: runs,
+    mapRun: (row: any) => row,
+    mapStep: (row: any) => row,
+    mapHook: (row: any) => row,
+  });
 
   // Eager sweeper: nitro module may never call world.start(); durable timers must run regardless.
   // Also a lost-wake backstop: a running run with no jobs, no waiting timers, and no events for
@@ -132,11 +145,12 @@ export function createWorld(config: {
       // runs.get echoes it back for every replay.
       dynamicWorkflowCode: true,
     },
-    runs,
+    runs: { ...runs, ...extrasWorld._runsAdditions },
     steps,
     hooks,
     events: {
       ...eventsRead,
+      ...extrasWorld._eventsAdditions,
       async create(runId: string | null, data: any, params?: any): Promise<any> {
         if (params?.resumeId) data = { ...data, resumeId: params.resumeId };
         // Derive wake messages from the event type — the queue coordinates the
@@ -158,6 +172,9 @@ export function createWorld(config: {
     },
     ...streamer,
     ...queue,
+    ...extrasWorld._queueAdditions,
+    analytics: extrasWorld._analytics,
+    getEnvironment: extrasWorld._getEnvironment,
     ...(config.streamFlushIntervalMs !== undefined ? { streamFlushIntervalMs: config.streamFlushIntervalMs } : {}),
     // Non-critical observability hook: correlate step execution (no-op sink).
     telemetry: {

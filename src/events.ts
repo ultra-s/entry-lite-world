@@ -368,7 +368,7 @@ export async function createEvent(
         if (dup.rows[0]) throw new EntityConflictError(`step_created for correlationId "${data.correlationId}" already exists in run "${effectiveRunId}"`);
         const ins = await tx.query(
           `INSERT INTO entrylite.workflow_steps (run_id, step_id, step_name, input, status, attempt, spec_version)
-           VALUES ($1,$2,$3,$4,'pending',0,$5) ON CONFLICT (step_id) DO NOTHING RETURNING *`,
+           VALUES ($1,$2,$3,$4,'pending',0,$5) ON CONFLICT (run_id, step_id) DO NOTHING RETURNING *`,
           [effectiveRunId, data.correlationId, eventData.stepName, eventData.input === undefined ? null : JSON.stringify(jsonSafe(eventData.input)), specVersion],
         );
         if (ins.rows[0]) {
@@ -385,7 +385,7 @@ export async function createEvent(
         if (lazyStepStart && !validatedStep) {
           const ins = await tx.query(
             `INSERT INTO entrylite.workflow_steps (run_id, step_id, step_name, input, status, attempt, spec_version)
-             VALUES ($1,$2,$3,$4,'pending',0,$5) ON CONFLICT (step_id) DO NOTHING RETURNING step_id`,
+             VALUES ($1,$2,$3,$4,'pending',0,$5) ON CONFLICT (run_id, step_id) DO NOTHING RETURNING step_id`,
             [effectiveRunId, data.correlationId, eventData.stepName, JSON.stringify(jsonSafe(eventData.input)), specVersion],
           );
           if (!ins.rows[0]) throw new EntityConflictError(`Step "${data.correlationId}" already created`);
