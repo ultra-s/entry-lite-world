@@ -30,10 +30,16 @@ function isTerminalStep(s: string): boolean { return (TERMINAL_STEP_STATUSES as 
 
 async function allocateEventId(db: Pool | PoolClient, runId: string): Promise<string> {
   // Ensure slot row exists (run_created opens it), then MAX+1 within the caller's tx.
+  // Lock the slot row for the remainder of the transaction so concurrent
+  // event inserts on the same run serialize (the "bump and report" contract);
+  // without FOR UPDATE two txs can compute the same position.
   await db.query(
     `INSERT INTO entrylite.workflow_event_slots (run_id) VALUES ($1) ON CONFLICT DO NOTHING`,
     [runId],
   );
+  if ('query' in db) {
+    await db.query(`SELECT run_id FROM entrylite.workflow_event_slots WHERE run_id = $1 FOR UPDATE`, [runId]);
+  }
   const res = await db.query<{ n: string | number }>(
     `SELECT COALESCE(MAX((regexp_replace(event_id, '^evnt_', ''))::text), '') AS n
      FROM entrylite.workflow_events WHERE run_id = $1`,
@@ -480,10 +486,28 @@ export async function createEvent(
         } else {
           const ex = await tx.query(`SELECT * FROM entrylite.workflow_hooks WHERE hook_id=$1`, [data.correlationId]);
           if (ex.rows[0] && ex.rows[0].run_id !== effectiveRunId) {
-            throw new EntityConflictError(`Hook "${data.correlationId}" already created`);
+            // Force claim: the caller takes the token from the victim run,
+            // re-pointing the hook row and recording who it was taken from.
+            if (eventData.force) {
+              const upd = await tx.query(
+                `UPDATE entrylite.workflow_hooks
+                 SET run_id=$1, metadata=$2, token_retention_until=$3
+                 WHERE hook_id=$4
+                 RETURNING *`,
+                [
+                  effectiveRunId,
+                  eventData.metadata === undefined ? ex.rows[0].metadata : JSON.stringify(jsonSafe(eventData.metadata)),
+                  eventData.tokenRetentionUntil ? new Date(eventData.tokenRetentionUntil).toISOString() : ex.rows[0].token_retention_until,
+                  data.correlationId,
+                ],
+              );
+              hook = mapHook(upd.rows[0]);
+            } else {
+              throw new EntityConflictError(`Hook "${data.correlationId}" already created`);
+            }
           }
           // orphaned hook row (crash between insert and event): recover by falling through
-          if (ex.rows[0]) hook = mapHook(ex.rows[0]);
+          if (!hook && ex.rows[0]) hook = mapHook(ex.rows[0]);
         }
         eventId = await allocateEventId(tx, effectiveRunId);
         await insertEvent(tx, effectiveRunId, eventId, data, specVersion);

@@ -25,7 +25,10 @@ export function createQueue(pool: Pool) {
     ?? (process.env.PORT ? `http://localhost:${process.env.PORT}` : 'http://localhost:3000');
 
   async function deliver(job: { id: number; queue_name: string; payload: any; attempts: number }) {
-    const messageId = newMessageId();
+    // Stable per-job message id: derive from the job's identity (id + attempts)
+    // rather than minting a fresh id per delivery attempt — the SDK uses
+    // messageId for dedup/delivery bookkeeping and expects it stable.
+    const messageId = `msg_${String(job.id).padStart(26, '0')}`;
     const headers: Record<string, string> = {
       'content-type': 'application/json',
       'x-vqs-queue-name': job.queue_name,

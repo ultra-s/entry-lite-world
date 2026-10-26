@@ -64,6 +64,7 @@ export function createRunsStorage(pool: Pool) {
         `SELECT * FROM entrylite.workflow_runs
          WHERE ($1::varchar IS NULL OR run_id ${cmp} $1)
            AND ($2::varchar IS NULL OR status = $2)
+           AND ($2::varchar[] IS NULL OR status = ANY($2::varchar[]))
            AND ($3::varchar IS NULL OR workflow_name = $3)
          ORDER BY run_id ${order === 'asc' ? 'ASC' : 'DESC'}
          LIMIT $4`,
