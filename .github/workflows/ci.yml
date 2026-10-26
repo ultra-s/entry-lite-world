@@ -29,7 +29,14 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: 22
-      - run: npm ci || npm install --no-audit --no-fund
+      - name: Install dependencies
+        run: |
+          for i in 1 2 3; do
+            npm install --no-audit --no-fund && break || {
+              echo "npm attempt $i failed, retrying in 15s"; rm -rf node_modules; sleep 15;
+            }
+          done
+          test -d node_modules
       - run: npm run build
       # The world bootstraps its schema; tests create what they need.
       - run: node --test test/contract-conformance.test.mjs
