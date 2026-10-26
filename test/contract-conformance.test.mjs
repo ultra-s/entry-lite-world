@@ -2,7 +2,7 @@
 // official test-support fixtures where applicable, plus a dynamic-workflow-code
 // round-trip and hook resume dedup convergence test.
 import { createWorld } from '../dist/index.js';
-import { DUPLICATE_EVENT_FIXTURES } from '/home/agentuser/entry-agents/node_modules/.pnpm/@workflow+world@5.0.5/node_modules/@workflow/world/dist/test-support/duplicate-event-fixtures.js';
+import { DUPLICATE_EVENT_FIXTURES } from '@workflow/world/test-support/duplicate-event-fixtures.js';
 
 const url = process.env.ENTRYLITE_WORLD_URL || 'postgres://world:world@127.0.0.1:5432/workflow';
 const world = createWorld({ connectionString: url });
